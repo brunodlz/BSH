@@ -1,24 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-ZSHRC="$HOME/.zshrc"
-BASHRC="$HOME/.bashrc"
-BSH_DIR="$HOME/.bsh"
-LOAD_FILE="$BSH_DIR/load.zsh"
-LOAD_CMD='[ -s "$HOME/.bsh/load.zsh" ] && source "$HOME/.bsh/load.zsh"'
-
 # -------------------------------
-# Detect current script location
-# -------------------------------
-
-if [ ! -f "$LOAD_FILE" ]; then
-  echo "❌ Loader not found: $LOAD_FILE"
-  echo "Please make sure the BSH repository is cloned to $BSH_DIR"
-  exit 1
-fi
-
-# -------------------------------
-# Detect current shell rc file
+# Detect shell and RC file
 # -------------------------------
 
 if [ -n "$ZSH_VERSION" ]; then
@@ -27,6 +11,31 @@ elif [ -n "$BASH_VERSION" ]; then
   SHELL_RC="$HOME/.bashrc"
 else
   echo "❌ Unsupported shell. Only Bash or Zsh are supported."
+  exit 1
+fi
+
+# -------------------------------
+# BSH directory and loader
+# -------------------------------
+
+BSH_DIR="$HOME/.bsh"
+LOAD_FILE="$BSH_DIR/load.zsh"
+LOAD_CMD='[ -s "$HOME/.bsh/load.zsh" ] && source "$HOME/.bsh/load.zsh"'
+
+# -------------------------------
+# Verify BSH directory
+# -------------------------------
+if [ ! -d "$BSH_DIR" ]; then
+    echo "❌ BSH directory not found: $BSH_DIR"
+    exit 1
+fi
+
+# -------------------------------
+# Verify loader exists
+# -------------------------------
+
+if [ ! -f "$LOAD_FILE" ]; then
+  echo "❌ Loader not found: $LOAD_FILE"
   exit 1
 fi
 
@@ -44,9 +53,17 @@ else
 fi
 
 # -------------------------------
-# Run loader immediately
+# Load scripts immediately
 # -------------------------------
 
-source "$LOAD_FILE"
-echo "✅ BSH loaded into current shell session."
+if command -v zsh >/dev/null 2>&1; then
+    echo "➡️ Loading BSH scripts in current session via Zsh..."
+    zsh -c "source $LOAD_FILE"
+    echo "✅ BSH loaded in current session."
+else
+    echo "⚠️ Zsh not found. Adding loader to Bash only."
+    [ -f "$BSH_DIR/bash_tools.sh" ] && source "$BSH_DIR/bash_tools.sh"
+    echo "✅ Bash-compatible BSH loaded in current session."
+fi
+
 echo "➡️ Open a new terminal to load BSH automatically in future sessions."
