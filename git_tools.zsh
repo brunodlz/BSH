@@ -44,8 +44,3 @@ git_reset() {
     fi
   done
 }
-
-# clean all branchs
-gclean() {
-    git branch --merge | grep -v '^\*' | grep -vE 'main|master|develop' | xargs -n 1 git branch -d
-}
