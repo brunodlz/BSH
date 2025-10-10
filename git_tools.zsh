@@ -21,7 +21,7 @@ git_add() {
   files=("${(@f)$(git status --short | awk '{print $2}')}")
   for i in "$@"; do
     if (( i >= 1 && i <= ${#files[@]} )); then
-      file="${files[$((i-1))]}"
+      file="${files[$((i))]}"
       git add "$file"
       echo "✅ Added: $file"
     else
@@ -36,7 +36,7 @@ git_reset() {
   files=("${(@f)$(git status --short | awk '{print $2}')}")
   for i in "$@"; do
     if (( i >= 1 && i <= ${#files[@]} )); then
-      file="${files[$((i-1))]}"
+      file="${files[$((i))]}"
       git reset HEAD -- "$file" >/dev/null 2>&1
       echo "🧹 Removed from stage: $file"
     else
