@@ -6,5 +6,11 @@ A lightweight shell environment that enhances Git, aliases, and developer produc
 
 ```bash
 git clone https://github.com/brunodlz/BSH.git ~/.bsh
-cd ~/.bsh/install.sh
-source ~/.bashrc   # or source ~/.zshrc
+~/.bsh/install.sh
+source ~/.bashrc # or source ~/.zshrc
+```
+
+The install script automatically appends the following line to your .bashrc or .zshrc:
+```bash
+[ -s "$HOME/.bsh/load.sh" ] && source "$HOME/.bsh/load.sh"
+```
