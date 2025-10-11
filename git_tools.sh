@@ -5,11 +5,9 @@ git_current_branch() {
     git rev-parse --abbrev-ref HEAD 2>/dev/null
 }
 
-# ---------------------------------------
-# Git numbered staging helpers
-# ---------------------------------------
-
+# --------------------------------
 # List files with numeric indexes
+# --------------------------------
 
 git_list() {
   local staged=()
@@ -111,10 +109,25 @@ git_list() {
   fi
 }
 
+# ------------------------------------------
 # Add files to staging area by index number
+# ------------------------------------------
 
 git_add() {
-  local files=("${(@f)$(git status --short | awk '{print $2}')}")
+  local staged_files unstaged_files files=()
+  local indexes=()
+
+  staged_files=("${(@f)$(git diff --cached --name-only | sed '/^$/d' | tr -d '\r')}")
+  unstaged_files=("${(@f)$(git diff --name-only | sed '/^$/d' | tr -d '\r')}")
+
+  for f in "${staged_files[@]}" "${unstaged_files[@]}"; do
+    [[ -n "$f" ]] && files+=("$f")
+  done
+
+  if [[ ${#files[@]} -eq 0 ]]; then
+    echo "✅ No files to add"
+    return 0
+  fi
 
   if [[ $# -eq 0 ]]; then
     echo "‼️ Use: ga <number(s) or interval(s)>"
@@ -122,30 +135,18 @@ git_add() {
     return 1
   fi
 
-  if [[ ${#files[@]} -eq 0 ]]; then
-    echo "✅ No files to add"
-    return 0
-  fi
-
-  local indexes=()
-
-  # Expand intervals and multiple arguments
   for arg in "$@"; do
     if [[ "$arg" == *-* ]]; then
       local start end
       IFS='-' read -r start end <<< "$arg"
-
-      # Validate interval
       if [[ ! "$start" =~ ^[0-9]+$ ]] || [[ ! "$end" =~ ^[0-9]+$ ]]; then
         echo "⚠️ Invalid interval: $arg"
         continue
       fi
-
       for ((i=start; i<=end; i++)); do
         indexes+=($i)
       done
     else
-      # Validate single number
       if [[ ! "$arg" =~ ^[0-9]+$ ]]; then
         echo "⚠️ Invalid number: $arg"
         continue
@@ -154,23 +155,37 @@ git_add() {
     fi
   done
 
-  # Remove duplicate and order
   indexes=(${(nu)indexes})
 
-  local added=0
   for i in "${indexes[@]}"; do
     if (( i >= 1 && i <= ${#files[@]} )); then
-      local file="${files[$i]}"
-      git add "$file"
-      echo "✅ Added: $file"
-      ((added++))
+      local file="${files[$((i))]}"
+
+      if [[ -z "$file" ]]; then
+        echo "⚠️ Skipping empty entry at index $i"
+        continue
+      fi
+
+      # If the file is unstaged, allow adding it again
+      if git diff --name-only | grep -qx "$file"; then
+        git add "$file"
+        continue
+      fi
+
+      # If the file was unstaged and not yet staged
+      if ! git diff --cached --name-only | grep -qx "$file"; then
+        git add "$file"
+        continue
+      fi
     else
-      echo "⚠️  Invalid number: $i (range: 1-${#files[@]})"
+      echo "⚠️ Invalid number: $i (range: 1-${#files[@]})"
     fi
   done
 }
 
+# ----------------------------------------------------
 # Diff files outside the staging area by index number
+# ----------------------------------------------------
 
 git_diff() {
   local files=("${(@f)$(git status --short | awk '{print $2}')}")
@@ -203,7 +218,9 @@ git_diff() {
   fi
 }
 
+# -----------------------------------------------
 # Remove files from staging area by index number
+# -----------------------------------------------
 
 git_reset() {
   files=("${(@f)$(git status --short | awk '{print $2}')}")
