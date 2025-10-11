@@ -7,4 +7,4 @@ A lightweight shell environment that enhances Git, aliases, and developer produc
 ```bash
 git clone https://github.com/brunodlz/BSH.git ~/.bsh
 cd ~/.bsh/install.sh
-source ~/.bashrc   # or source "${ZDOTDIR:-$HOME}/.zshrc"
+source ~/.bashrc   # or source ~/.zshrc
