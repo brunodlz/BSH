@@ -7,6 +7,7 @@ alias gps='git push'
 alias gl='git log --oneline --graph --decorate'
 alias gls='git_list'
 alias ga='git_add'
+alias gd='git_diff'
 alias grs='git_reset'
 
 # ===== SYSTEM =====
