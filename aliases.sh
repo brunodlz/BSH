@@ -1,11 +1,16 @@
 # ===== GIT =====
-alias gs='git status -sb'
+alias gsb='git status -sb'
 alias gc='git commit -v'
 alias gco='git checkout'
 alias gpl='git pull --rebase'
 alias gps='git push'
-alias gl='git log --oneline --graph --decorate'
-alias gls='git_list'
+alias gl='git log --graph \
+  --abbrev-commit \
+  --decorate \
+  --date="format-local:%Y-%m-%d" \
+  --pretty=format:"%C(bold blue)%h%C(reset)%C(auto)%d%C(reset) %C(white)%s%C(reset) %C(dim white)by%C(reset) %C(bold white)%an%C(reset) %C(dim white)on%C(reset) %C(bold green)%cr%C(reset)%n"
+'
+alias gs='git_list'
 alias ga='git_add'
 alias gd='git_diff'
 alias grs='git_reset'
