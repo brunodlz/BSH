@@ -23,12 +23,12 @@ git_add() {
   if [[ $# -eq 0 ]]; then
     echo "‼️ Use: ga <number(s) or interval(s)>"
     echo "Ex: ga 1 3 5-7"
-    return
+    return 1
   fi
 
   if [[ ${#files[@]} -eq 0 ]]; then
     echo "✅ No files to add"
-    return
+    return 0
   fi
 
   local indexes=()
@@ -69,9 +69,42 @@ git_add() {
       echo "✅ Added: $file"
       ((added++))
     else
-      echo "⚠️ Number invalid: $i"
+      echo "⚠️  Invalid number: $i (range: 1-${#files[@]})"
     fi
   done
+}
+
+# Diff files outside the staging area by index number
+
+git_diff() {
+  local files=("${(@f)$(git status --short | awk '{print $2}')}")
+
+  if [[ $# -eq 0 ]]; then
+    echo "‼️ Use: gd <number>"
+    echo "Ex: gd 1"
+    return 1
+  fi
+
+  if [[ ${#files[@]} -eq 0 ]]; then
+    echo "✅ No modified files"
+    return 0
+  fi
+
+  local num="$1"
+
+  # Validate single number
+  if [[ ! "$num" =~ ^[0-9]+$ ]]; then
+    echo "⚠️ Invalid argument: $num"
+    return 1
+  fi
+
+  if (( num >= 1 && num <= ${#files[@]} )); then
+    local file="${files[$num]}"
+    git diff --color=always -- "$file" | less -R
+  else
+    echo "⚠️  Invalid number: $num (range: 1-${#files[@]})"
+    return 1
+  fi
 }
 
 # Remove files from staging area by index number
