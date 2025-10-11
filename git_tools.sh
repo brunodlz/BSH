@@ -18,12 +18,56 @@ git_list() {
 # Add files to staging area by index number
 
 git_add() {
-  files=("${(@f)$(git status --short | awk '{print $2}')}")
-  for i in "$@"; do
+  local files=("${(@f)$(git status --short | awk '{print $2}')}")
+
+  if [[ $# -eq 0 ]]; then
+    echo "‼️ Use: ga <number(s) or interval(s)>"
+    echo "Ex: ga 1 3 5-7"
+    return
+  fi
+
+  if [[ ${#files[@]} -eq 0 ]]; then
+    echo "✅ No files to add"
+    return
+  fi
+
+  local indexes=()
+
+  # Expand intervals and multiple arguments
+  for arg in "$@"; do
+    if [[ "$arg" == *-* ]]; then
+      local start end
+      IFS='-' read -r start end <<< "$arg"
+
+      # Validate interval
+      if [[ ! "$start" =~ ^[0-9]+$ ]] || [[ ! "$end" =~ ^[0-9]+$ ]]; then
+        echo "⚠️ Invalid interval: $arg"
+        continue
+      fi
+
+      for ((i=start; i<=end; i++)); do
+        indexes+=($i)
+      done
+    else
+      # Validate single number
+      if [[ ! "$arg" =~ ^[0-9]+$ ]]; then
+        echo "⚠️ Invalid number: $arg"
+        continue
+      fi
+      indexes+=($arg)
+    fi
+  done
+
+  # Remove duplicate and order
+  indexes=(${(nu)indexes})
+
+  local added=0
+  for i in "${indexes[@]}"; do
     if (( i >= 1 && i <= ${#files[@]} )); then
-      file="${files[$((i))]}"
+      local file="${files[$i]}"
       git add "$file"
       echo "✅ Added: $file"
+      ((added++))
     else
       echo "⚠️ Number invalid: $i"
     fi
