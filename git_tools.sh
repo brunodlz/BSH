@@ -168,34 +168,18 @@ git_add() {
 # ----------------------------------------------------
 
 git_diff() {
-  local files=("${(@f)$(git status --short | awk '{print $2}')}")
+  local files=($(git_get_files))
 
   if [[ $# -eq 0 ]]; then
-    echo "‼️ Use: gd <number>"
+    echo "‼️ Usage: gd <number>"
     echo "Ex: gd 1"
     return 1
   fi
 
-  if [[ ${#files[@]} -eq 0 ]]; then
-    echo "✅ No modified files"
-    return 0
-  fi
+  local file
+  file=$(git_get_file_by_index "$1" "${files[@]}") || return 1
 
-  local num="$1"
-
-  # Validate single number
-  if [[ ! "$num" =~ ^[0-9]+$ ]]; then
-    echo "⚠️ Invalid argument: $num"
-    return 1
-  fi
-
-  if (( num >= 1 && num <= ${#files[@]} )); then
-    local file="${files[$num]}"
-    git diff --color=always -- "$file" | less -R
-  else
-    echo "⚠️  Invalid number: $num (range: 1-${#files[@]})"
-    return 1
-  fi
+  git diff --color=always -- "$file" | less -R
 }
 
 # -----------------------------------------------
@@ -203,14 +187,43 @@ git_diff() {
 # -----------------------------------------------
 
 git_reset() {
-  files=("${(@f)$(git status --short | awk '{print $2}')}")
+  local files=($(git_get_files))
+  local file
+
+  if [[ $# -eq 0 ]]; then
+    echo "‼️ Usage: gr <number(s) or ranges>"
+    return 1
+  fi
+
   for i in "$@"; do
-    if (( i >= 1 && i <= ${#files[@]} )); then
-      file="${files[$((i))]}"
-      git reset HEAD -- "$file" >/dev/null 2>&1
-      echo "🧹 Removed from stage: $file"
-    else
-      echo "⚠️ Number invalid: $i"
-    fi
+    file=$(git_get_file_by_index "$i" "${files[@]}") || continue
+    git reset HEAD -- "$file" >/dev/null 2>&1
+    echo "🧹 Removed from stage: $file"
   done
+}
+
+# -----------------------------------------------
+# Helpers
+# -----------------------------------------------
+
+git_get_files() {
+  git status --short | awk '{print $2}'
+}
+
+git_get_file_by_index() {
+  local index=$1
+  shift
+  local -a files=("$@")
+
+  if [[ ! "$index" =~ ^[0-9]+$ ]]; then
+    echo "⚠️ Invalid number: $index" >&2
+    return 1
+  fi
+
+  if (( index < 1 || index > ${#files[@]} )); then
+    echo "⚠️ Number out of range: $index (1-${#files[@]})" >&2
+    return 1
+  fi
+
+  echo "${files[$((index))]}"
 }
