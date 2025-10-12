@@ -16,54 +16,21 @@ cyan=$'\033[36m'
 reset=$'\033[0m'
 
 # --------------------------------
-# Git status
+# Global file map and counter
 # --------------------------------
 
 declare -A git_file_map
+file_counter=1
+
+# --------------------------------
+# Git status
+# --------------------------------
 
 git_status() {
-  file_counter=1
-  git_file_map=()
-
   local -a staged unstaged untracked
+  build_git_file_map_from_status staged unstaged untracked
 
-  while IFS= read -r line; do
-    local allStaged="${line:0:1}"    # staged
-    local allUnstaged="${line:1:1}"  # unstaged
-    local allUntracked="${line:0:2}" # untracked
-    local file="${line:3}"           # file name
-
-    # --- Staged ---
-    if [[ "$allStaged" != " " && "$allStaged" != "?" ]]; then
-      local label=""
-      case "$allStaged" in
-        'M') label="${green} modified:" ;;
-        'A') label="${green} new file:" ;;
-        'D') label="${red}  deleted:" ;;
-        'R') label="${green}  renamed:" ;;
-        'C') label="${green}   copied:" ;;
-      esac
-      staged+=("$label $reset$file")
-    fi
-
-    # --- Unstaged ---
-    if [[ "$allUnstaged" == "M" || "$allUnstaged" == "D" ]]; then
-      local label=""
-      case "$allUnstaged" in
-        'M') label="${orange} modified:" ;;
-        'D') label="${red}  deleted:" ;;
-      esac
-      unstaged+=("$label $reset$file")      
-    fi
-
-    # --- Untracked ---
-    if [[ "$allUntracked" == "??" ]]; then
-      untracked+=("${cyan} untracked:${reset}$file")
-    fi
-    
-  done < <(git status --short)
-
-  # --- Prints ---
+  file_counter=1
   print_git_section "$green"  "Changes to be committed:"        "${staged[@]}"
   print_git_section "$orange" "Changes not staged for commit:"  "${unstaged[@]}"
   print_git_section "$cyan"   "Untracked files:"                "${untracked[@]}"
@@ -156,8 +123,12 @@ git_diff() {
     return 1
   fi
 
+  if [[ ${#git_file_map[@]} -eq 0 ]]; then
+    build_git_file_map_from_status
+  fi
+
   if [[ -z "${git_file_map[$num]}" ]]; then
-    echo "⚠️ Number out of range: $index (1-${#git_file_map[@]})" >&2
+    echo "⚠️ Number out of range: $num (1-${#git_file_map[@]})" >&2
     return 1
   fi
 
@@ -205,11 +176,78 @@ print_git_section() {
 
   for item in "${items[@]}"; do
     printf "%b   [%d] %s%b\n" "$showPipe" "$file_counter" "$item" "$reset"
-    git_file_map[$file_counter]="$item"
     ((file_counter++))
   done
 
   printf "%b\n" "$showPipe"
+}
+
+build_git_file_map_from_status() {
+  local staged_name="$1"
+  local unstaged_name="$2"
+  local untracked_name="$3"
+
+  file_counter=1
+  git_file_map=()
+
+  local -a staged_tmp unstaged_tmp untracked_tmp
+
+  while IFS= read -r line; do
+    local allStaged="${line:0:1}"    # staged
+    local allUnstaged="${line:1:1}"  # unstaged
+    local allUntracked="${line:0:2}" # untracked
+    local file="${line:3}"           # file name
+
+    # --- Staged ---
+    if [[ "$allStaged" != " " && "$allStaged" != "?" ]]; then
+      local label=""
+      case "$allStaged" in
+        'M') label="${green} modified:" ;;
+        'A') label="${green} new file:" ;;
+        'D') label="${red}  deleted:" ;;
+        'R') label="${green}  renamed:" ;;
+        'C') label="${green}   copied:" ;;
+      esac
+      staged_tmp+=("$label $reset$file")
+    fi
+
+    # --- Unstaged ---
+    if [[ "$allUnstaged" == "M" || "$allUnstaged" == "D" ]]; then
+      local label=""
+      case "$allUnstaged" in
+        'M') label="${orange} modified:" ;;
+        'D') label="${red}  deleted:" ;;
+      esac
+      unstaged_tmp+=("$label $reset$file")
+    fi
+
+    # --- Untracked ---
+    if [[ "$allUntracked" == "??" ]]; then
+      untracked_tmp+=("${cyan} untracked:${reset}$file")
+    fi
+  done < <(git status --short)
+
+  # Staged
+  for item in "${staged_tmp[@]}"; do
+    git_file_map[$file_counter]="$item"
+    ((file_counter++))
+  done
+
+  # Unstaged
+  for item in "${unstaged_tmp[@]}"; do
+    git_file_map[$file_counter]="$item"
+    ((file_counter++))
+  done
+
+  # Untracked
+  for item in "${untracked_tmp[@]}"; do
+    git_file_map[$file_counter]="$item"
+    ((file_counter++))
+  done
+
+  eval "$staged_name=(\"\${staged_tmp[@]}\")"
+  eval "$unstaged_name=(\"\${unstaged_tmp[@]}\")"
+  eval "$untracked_name=(\"\${untracked_tmp[@]}\")"
 }
 
 git_get_files() {
