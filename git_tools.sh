@@ -19,8 +19,11 @@ reset=$'\033[0m'
 # Git status
 # --------------------------------
 
+declare -A git_file_map
+
 git_status() {
   file_counter=1
+  git_file_map=()
 
   local -a staged unstaged untracked
 
@@ -145,14 +148,20 @@ git_add() {
 # ----------------------------------------------------
 
 git_diff() {
+  local num="$1"
+
   if [[ $# -eq 0 ]]; then
     echo "‼️ Use: gd <number>"
     echo "Ex: gd 1"
     return 1
   fi
 
-  local files=($(git_get_files))
-  local file=$(git_get_file_by_index "$1" "${files[@]}") || return 1
+  if [[ -z "${git_file_map[$num]}" ]]; then
+    echo "⚠️ Number out of range: $index (1-${#git_file_map[@]})" >&2
+    return 1
+  fi
+
+  local file="${git_file_map[$num]#*${reset}}"
 
   git diff --color=always -- "$file" | less -R
 }
@@ -196,6 +205,7 @@ print_git_section() {
 
   for item in "${items[@]}"; do
     printf "%b   [%d] %s%b\n" "$showPipe" "$file_counter" "$item" "$reset"
+    git_file_map[$file_counter]="$item"
     ((file_counter++))
   done
 
