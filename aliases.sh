@@ -13,7 +13,7 @@ alias gl='git log --graph \
 alias gs='git_status'
 alias ga='git_add'
 alias gd='git_diff'
-alias grs='git_reset'
+alias gr='git_reset'
 
 # ===== SYSTEM =====
 alias ..='cd ..'

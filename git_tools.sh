@@ -168,16 +168,14 @@ git_add() {
 # ----------------------------------------------------
 
 git_diff() {
-  local files=($(git_get_files))
-
   if [[ $# -eq 0 ]]; then
     echo "‼️ Usage: gd <number>"
     echo "Ex: gd 1"
     return 1
   fi
 
-  local file
-  file=$(git_get_file_by_index "$1" "${files[@]}") || return 1
+  local files=($(git_get_files))
+  local file=$(git_get_file_by_index "$1" "${files[@]}") || return 1
 
   git diff --color=always -- "$file" | less -R
 }
@@ -191,7 +189,8 @@ git_reset() {
   local file
 
   if [[ $# -eq 0 ]]; then
-    echo "‼️ Usage: gr <number(s) or ranges>"
+    echo "‼️ Usage: gr <numbers>"
+    echo "Ex: gr 1 2 3"
     return 1
   fi
 
