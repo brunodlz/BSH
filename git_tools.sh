@@ -9,21 +9,20 @@ git_current_branch() {
 # Colors
 # --------------------------------
 
-green='\033[32m'
-red='\033[31m'
-yellow='\033[33m'
-orange='\033[38;5;214m'
-cyan='\033[36m'
-reset='\033[0m'
-bold="\033[1m"
+green=$'\033[32m'
+red=$'\033[31m'
+orange=$'\033[38;5;214m'
+cyan=$'\033[36m'
+reset=$'\033[0m'
 
 # --------------------------------
 # Git status
 # --------------------------------
 
 git_status() {
+  file_counter=1
+
   local -a staged unstaged untracked
-  local counter=1
 
   while IFS= read -r line; do
     local allStaged="${line:0:1}"    # staged
@@ -41,8 +40,7 @@ git_status() {
         'R') label="${green}  renamed:" ;;
         'C') label="${green}   copied:" ;;
       esac
-      staged+=("$counter|$label $reset$file")
-      ((counter++))
+      staged+=("$label $reset$file")
     fi
 
     # --- Unstaged ---
@@ -52,41 +50,20 @@ git_status() {
         'M') label="${orange} modified:" ;;
         'D') label="${red}  deleted:" ;;
       esac
-      unstaged+=("$counter|$label $reset$file")
-      ((counter++))
+      unstaged+=("$label $reset$file")      
     fi
 
     # --- Untracked ---
     if [[ "$allUntracked" == "??" ]]; then
-      untracked+=("$counter|${cyan} untracked:${reset} $file")
-      ((counter++))
+      untracked+=("${cyan} untracked:${reset}$file")
     fi
+    
   done < <(git status --short)
 
   # --- Prints ---
   print_git_section "$green"  "Changes to be committed:"        "${staged[@]}"
   print_git_section "$orange" "Changes not staged for commit:"  "${unstaged[@]}"
   print_git_section "$cyan"   "Untracked files:"                "${untracked[@]}"
-}
-
-print_git_section() {
-  local color="$1"
-  local title="$2"
-  shift 2
-  local items=("$@")
-
-  [[ ${#items[@]} -eq 0 ]] && return
-
-  echo -e "${color}| ➤${reset} ${title}"
-  echo -e "${color}|${reset}"
-
-  for item in "${items[@]}"; do
-    local num="${item%%|*}"
-    local content="${item#*|}"
-    echo -e "${color}|${reset}   [$num] $content"
-  done
-
-  echo -e "${color}|${reset}"
 }
 
 # ------------------------------------------
@@ -169,7 +146,7 @@ git_add() {
 
 git_diff() {
   if [[ $# -eq 0 ]]; then
-    echo "‼️ Usage: gd <number>"
+    echo "‼️ Use: gd <number>"
     echo "Ex: gd 1"
     return 1
   fi
@@ -189,7 +166,7 @@ git_reset() {
   local file
 
   if [[ $# -eq 0 ]]; then
-    echo "‼️ Usage: gr <numbers>"
+    echo "‼️ Use: gr <numbers>"
     echo "Ex: gr 1 2 3"
     return 1
   fi
@@ -204,6 +181,26 @@ git_reset() {
 # -----------------------------------------------
 # Helpers
 # -----------------------------------------------
+
+print_git_section() {
+  local color="$1"
+  local title="$2"
+  shift 2
+  local items=("$@")
+  local showPipe="${color}|${reset}"
+
+  [[ ${#items[@]} -eq 0 ]] && return
+
+  printf "%b ➤ %s\n" "$showPipe" "$title"
+  printf "%b\n" "$showPipe"
+
+  for item in "${items[@]}"; do
+    printf "%b   [%d] %s%b\n" "$showPipe" "$file_counter" "$item" "$reset"
+    ((file_counter++))
+  done
+
+  printf "%b\n" "$showPipe"
+}
 
 git_get_files() {
   git status --short | awk '{print $2}'
