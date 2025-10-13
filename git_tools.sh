@@ -1,10 +1,5 @@
 # ===== GIT ADVANCED =====
 
-# branch local
-git_current_branch() {
-    git rev-parse --abbrev-ref HEAD 2>/dev/null
-}
-
 # --------------------------------
 # Colors
 # --------------------------------
@@ -16,11 +11,29 @@ cyan=$'\033[36m'
 reset=$'\033[0m'
 
 # --------------------------------
-# Global file map and counter
+# Shell detection
 # --------------------------------
 
-declare -A git_file_map
-file_counter=1
+if [ -n "$ZSH_VERSION" ]; then
+  __SHELL_TYPE="zsh"
+elif [ -n "$BASH_VERSION" ]; then
+  __SHELL_TYPE="bash"
+else
+  echo "⚠️  Unsupported shell. Use Bash or Zsh." >&2
+  return 1 2>/dev/null || exit 1
+fi
+
+# --------------------------------
+# Global state
+# --------------------------------
+
+if [[ "$__SHELL_TYPE" == "zsh" ]]; then
+  typeset -A git_file_map
+  typeset -i file_counter=1
+else
+  declare -A git_file_map
+  declare -i file_counter=1
+fi
 
 # --------------------------------
 # Git status
@@ -28,7 +41,7 @@ file_counter=1
 
 git_status() {
   local -a staged unstaged untracked
-  build_git_file_map_from_status staged unstaged untracked
+  git_file_map_from_status staged unstaged untracked
 
   file_counter=1
   print_git_section "$green"  "Changes to be committed:"        "${staged[@]}"
@@ -36,9 +49,9 @@ git_status() {
   print_git_section "$cyan"   "Untracked files:"                "${untracked[@]}"
 }
 
-# ------------------------------------------
+# --------------------------------
 # Git add
-# ------------------------------------------
+# --------------------------------
 
 git_add() {
   local staged_files unstaged_files files=()
@@ -110,21 +123,21 @@ git_add() {
   done
 }
 
-# ----------------------------------------------------
+# --------------------------------
 # Git diff
-# ----------------------------------------------------
+# --------------------------------
 
 git_diff() {
   local num="$1"
 
   if [[ $# -eq 0 ]]; then
-    echo "‼️ Use: gd <number>"
-    echo "Ex: gd 1"
+    echo "‼️ Use: gd <number>" >&2
+    echo "Ex: gd 1" >&2
     return 1
   fi
 
   if [[ ${#git_file_map[@]} -eq 0 ]]; then
-    build_git_file_map_from_status
+    git_file_map_from_status
   fi
 
   if [[ -z "${git_file_map[$num]}" ]]; then
@@ -132,142 +145,182 @@ git_diff() {
     return 1
   fi
 
-  local file="${git_file_map[$num]#*${reset}}"
+  local file=$(_extract_filename "${git_file_map[$num]}")
 
   git diff --color=always -- "$file" | less -R
 }
 
-# -----------------------------------------------
+# --------------------------------
 # Git reset
-# -----------------------------------------------
+# --------------------------------
 
 git_reset() {
-  local files=($(git_get_files))
-  local file
-
   if [[ $# -eq 0 ]]; then
-    echo "‼️ Use: gr <numbers>"
-    echo "Ex: gr 1 2 3"
+    echo "‼️ Use: gr <numbers>" >&2
+    echo "Ex: gr 1 2 3" >&2
     return 1
   fi
 
+  if [[ ${#git_file_map[@]} -eq 0 ]]; then
+    git_file_map_from_status
+  fi
+
+  local -a files_to_reset
+  local file
+
   for i in "$@"; do
-    file=$(git_get_file_by_index "$i" "${files[@]}") || continue
-    git reset HEAD -- "$file" >/dev/null 2>&1
-    echo "🧹 Removed from stage: $file"
+    if [[ -z "${git_file_map[$i]}" ]]; then
+      echo "⚠️ Number out of range: $i (1-${#git_file_map[@]})" >&2
+      return 1
+    fi
+
+    file=$(_extract_filename "${git_file_map[$i]}")
+    files_to_reset+=("$file")
   done
+
+  if git reset HEAD -- "${files_to_reset[@]}" >/dev/null; then
+    for file in "${files_to_reset[@]}"; do
+      echo "🧹 Removed from stage: $file"
+    done
+  else
+    echo "❌ Failed to reset files" >&2
+    return 1
+  fi
 }
 
-# -----------------------------------------------
-# Helpers
-# -----------------------------------------------
+# ===============================================
+# =================== Helpers ===================
+# ===============================================
+
+# --------------------------------------
+# Print
+# --------------------------------------
 
 print_git_section() {
   local color="$1"
   local title="$2"
   shift 2
   local items=("$@")
-  local showPipe="${color}|${reset}"
+  local pipe="${color}|${reset}"
 
   [[ ${#items[@]} -eq 0 ]] && return
 
-  printf "%b ➤ %s\n" "$showPipe" "$title"
-  printf "%b\n" "$showPipe"
+  printf "%b ➤ %s\n" "$pipe" "$title"
+  printf "%b\n" "$pipe"
 
   for item in "${items[@]}"; do
-    printf "%b   [%d] %s%b\n" "$showPipe" "$file_counter" "$item" "$reset"
+    printf "%b   [%d] %s%b\n" "$pipe" "$file_counter" "$item" "$reset"
     ((file_counter++))
   done
 
-  printf "%b\n" "$showPipe"
+  printf "%b\n" "$pipe"
 }
 
-build_git_file_map_from_status() {
-  local staged_name="$1"
-  local unstaged_name="$2"
-  local untracked_name="$3"
+# --------------------------------------
+# Git file map from status
+# --------------------------------------
+
+git_file_map_from_status() {
+  local staged_var="${1:-}"
+  local unstaged_var="${2:-}"
+  local untracked_var="${3:-}"
 
   file_counter=1
   git_file_map=()
 
-  local -a staged_tmp unstaged_tmp untracked_tmp
+  local -a staged_items unstaged_items untracked_items
+  local allStaged allUnstaged allUntracked label file
 
   while IFS= read -r line; do
-    local allStaged="${line:0:1}"    # staged
-    local allUnstaged="${line:1:1}"  # unstaged
-    local allUntracked="${line:0:2}" # untracked
-    local file="${line:3}"           # file name
+    allStaged="${line:0:1}"    # staged
+    allUnstaged="${line:1:1}"  # unstaged
+    allUntracked="${line:0:2}" # untracked
+    file="${line:3}"           # file name
+
+    [[ -z "$file" ]] && continue
 
     # --- Staged ---
     if [[ "$allStaged" != " " && "$allStaged" != "?" ]]; then
-      local label=""
       case "$allStaged" in
-        'M') label="${green} modified:" ;;
-        'A') label="${green} new file:" ;;
-        'D') label="${red}  deleted:" ;;
-        'R') label="${green}  renamed:" ;;
-        'C') label="${green}   copied:" ;;
+        M) label="${green} modified:" ;;
+        A) label="${green} new file:" ;;
+        D) label="${red}  deleted:" ;;
+        R) label="${green}  renamed:" ;;
+        C) label="${green}   copied:" ;;
+        *) label="${green}  changed:" ;;
       esac
-      staged_tmp+=("$label $reset$file")
+      staged_items+=("$label $reset$file")
     fi
 
     # --- Unstaged ---
     if [[ "$allUnstaged" == "M" || "$allUnstaged" == "D" ]]; then
-      local label=""
       case "$allUnstaged" in
-        'M') label="${orange} modified:" ;;
-        'D') label="${red}  deleted:" ;;
+        M) label="${orange} modified:" ;;
+        D) label="${red}  deleted:" ;;
       esac
-      unstaged_tmp+=("$label $reset$file")
+      unstaged_items+=("$label $reset$file")
     fi
 
     # --- Untracked ---
     if [[ "$allUntracked" == "??" ]]; then
-      untracked_tmp+=("${cyan} untracked:${reset}$file")
+      untracked_items+=("${cyan}untracked: ${reset}$file")
     fi
-  done < <(git status --short)
+  done < <(git status --porcelain 2>/dev/null)
 
   # Staged
-  for item in "${staged_tmp[@]}"; do
+  for item in "${staged_items[@]}"; do
     git_file_map[$file_counter]="$item"
     ((file_counter++))
   done
 
   # Unstaged
-  for item in "${unstaged_tmp[@]}"; do
+  for item in "${unstaged_items[@]}"; do
     git_file_map[$file_counter]="$item"
     ((file_counter++))
   done
 
   # Untracked
-  for item in "${untracked_tmp[@]}"; do
+  for item in "${untracked_items[@]}"; do
     git_file_map[$file_counter]="$item"
     ((file_counter++))
   done
 
-  eval "$staged_name=(\"\${staged_tmp[@]}\")"
-  eval "$unstaged_name=(\"\${unstaged_tmp[@]}\")"
-  eval "$untracked_name=(\"\${untracked_tmp[@]}\")"
-}
-
-git_get_files() {
-  git status --short | awk '{print $2}'
-}
-
-git_get_file_by_index() {
-  local index=$1
-  shift
-  local -a files=("$@")
-
-  if [[ ! "$index" =~ ^[0-9]+$ ]]; then
-    echo "⚠️ Invalid number: $index" >&2
-    return 1
+  # Return arrays in a way that is compatible with both shells
+  if [[ -n "$staged_var" ]]; then
+    if [[ "$__SHELL_TYPE" == "bash" ]] && [[ "${BASH_VERSINFO[0]}" -ge 4 ]] && [[ "${BASH_VERSINFO[1]}" -ge 3 ]]; then
+      # Bash 4.3+ supports nameref (more efficient)
+      local -n _ref="$staged_var"
+      _ref=("${staged_items[@]}")
+    else
+      # Fallback to eval (Zsh or old Bash)
+      eval "$staged_var=(\"\${staged_items[@]}\")"
+    fi
   fi
 
-  if (( index < 1 || index > ${#files[@]} )); then
-    echo "⚠️ Number out of range: $index (1-${#files[@]})" >&2
-    return 1
+  if [[ -n "$unstaged_var" ]]; then
+    if [[ "$__SHELL_TYPE" == "bash" ]] && [[ "${BASH_VERSINFO[0]}" -ge 4 ]] && [[ "${BASH_VERSINFO[1]}" -ge 3 ]]; then
+      local -n _ref="$unstaged_var"
+      _ref=("${unstaged_items[@]}")
+    else
+      eval "$unstaged_var=(\"\${unstaged_items[@]}\")"
+    fi
   fi
 
-  echo "${files[$((index))]}"
+  if [[ -n "$untracked_var" ]]; then
+    if [[ "$__SHELL_TYPE" == "bash" ]] && [[ "${BASH_VERSINFO[0]}" -ge 4 ]] && [[ "${BASH_VERSINFO[1]}" -ge 3 ]]; then
+      local -n _ref="$untracked_var"
+      _ref=("${untracked_items[@]}")
+    else
+      eval "$untracked_var=(\"\${untracked_items[@]}\")"
+    fi
+  fi
+}
+
+# --------------------------------------
+# Extract filename from colored string
+# --------------------------------------
+
+_extract_filename() {
+  local colored_string="$1"
+  echo "${colored_string##*$reset}"
 }
