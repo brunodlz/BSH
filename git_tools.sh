@@ -40,13 +40,12 @@ fi
 # --------------------------------
 
 git_status() {
-  local -a staged unstaged untracked
-  git_file_map_from_status staged unstaged untracked
+  git_file_map_from_status
 
   file_counter=1
-  print_git_section "$green"  "Changes to be committed:"        "${staged[@]}"
-  print_git_section "$orange" "Changes not staged for commit:"  "${unstaged[@]}"
-  print_git_section "$cyan"   "Untracked files:"                "${untracked[@]}"
+  print_git_section "$green"  "Changes to be committed:"        "${GIT_STAGED[@]}"
+  print_git_section "$orange" "Changes not staged for commit:"  "${GIT_UNSTAGED[@]}"
+  print_git_section "$cyan"   "Untracked files:"                "${GIT_UNTRACKED[@]}"
 }
 
 # --------------------------------
@@ -125,13 +124,11 @@ git_add() {
 
       # Re-adds modified files (even if they are already staged)
       (cd "$root" && git add -- "$file")
-      echo "➕ Added: $file"
     else
       echo "⚠️ Invalid number: $i (range: 1-${#files[@]})"
     fi
   done
 }
-
 
 # --------------------------------
 # Git diff
@@ -239,9 +236,9 @@ print_git_section() {
 # --------------------------------------
 
 git_file_map_from_status() {
-  local staged_var="${1:-}"
-  local unstaged_var="${2:-}"
-  local untracked_var="${3:-}"
+  GIT_STAGED=()
+  GIT_UNSTAGED=()
+  GIT_UNTRACKED=()
 
   file_counter=1
   git_file_map=()
@@ -259,7 +256,7 @@ git_file_map_from_status() {
     allStaged="${line:0:1}"    # staged
     allUnstaged="${line:1:1}"  # unstaged
     allUntracked="${line:0:2}" # untracked
-    file="${line:3}"           # file name
+    file="${line:3}"           # filename
 
     [[ -z "$file" ]] && continue
 
@@ -291,59 +288,32 @@ git_file_map_from_status() {
     fi
   done < <(git status --porcelain 2>/dev/null)
 
+  local item file_path
+
   # Staged
   for item in "${staged_items[@]}"; do
-    local file=$(_extract_filename "$item")
-    local abs_file="$git_root/$file"
-    git_file_map[$file_counter]="$abs_file"
+    file_path=$(_extract_filename "$item")
+    git_file_map[$file_counter]="$git_root/$file_path"
     ((file_counter++))
   done
 
   # Unstaged
   for item in "${unstaged_items[@]}"; do
-    local file=$(_extract_filename "$item")
-    local abs_file="$git_root/$file"
-    git_file_map[$file_counter]="$abs_file"
+    file_path=$(_extract_filename "$item")
+    git_file_map[$file_counter]="$git_root/$file_path"
     ((file_counter++))
   done
 
   # Untracked
   for item in "${untracked_items[@]}"; do
-    local file=$(_extract_filename "$item")
-    local abs_file="$git_root/$file"
-    git_file_map[$file_counter]="$abs_file"
+    file_path=$(_extract_filename "$item")
+    git_file_map[$file_counter]="$git_root/$file_path"
     ((file_counter++))
   done
 
-  # Return arrays in a way that is compatible with both shells
-  if [[ -n "$staged_var" ]]; then
-    if [[ "$__SHELL_TYPE" == "bash" ]] && [[ "${BASH_VERSINFO[0]}" -ge 4 ]] && [[ "${BASH_VERSINFO[1]}" -ge 3 ]]; then
-      # Bash 4.3+ supports nameref (more efficient)
-      local -n _ref="$staged_var"
-      _ref=("${staged_items[@]}")
-    else
-      # Fallback to eval (Zsh or old Bash)
-      eval "$staged_var=(\"\${staged_items[@]}\")"
-    fi
-  fi
-
-  if [[ -n "$unstaged_var" ]]; then
-    if [[ "$__SHELL_TYPE" == "bash" ]] && [[ "${BASH_VERSINFO[0]}" -ge 4 ]] && [[ "${BASH_VERSINFO[1]}" -ge 3 ]]; then
-      local -n _ref="$unstaged_var"
-      _ref=("${unstaged_items[@]}")
-    else
-      eval "$unstaged_var=(\"\${unstaged_items[@]}\")"
-    fi
-  fi
-
-  if [[ -n "$untracked_var" ]]; then
-    if [[ "$__SHELL_TYPE" == "bash" ]] && [[ "${BASH_VERSINFO[0]}" -ge 4 ]] && [[ "${BASH_VERSINFO[1]}" -ge 3 ]]; then
-      local -n _ref="$untracked_var"
-      _ref=("${untracked_items[@]}")
-    else
-      eval "$untracked_var=(\"\${untracked_items[@]}\")"
-    fi
-  fi
+  GIT_STAGED=("${staged_items[@]}")
+  GIT_UNSTAGED=("${unstaged_items[@]}")
+  GIT_UNTRACKED=("${untracked_items[@]}")
 }
 
 # --------------------------------------
