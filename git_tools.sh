@@ -54,15 +54,24 @@ git_status() {
 # --------------------------------
 
 git_add() {
-  local staged_files unstaged_files files=()
-  local indexes=()
+  local root files=() indexes=()
+  local staged_files unstaged_files
 
+  # Set the root directory of the git repository
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+    echo "❌ Not a Git repository"
+    return 1
+  }
+
+  # Get all staged and unstaged files
   staged_files=("${(@f)$(git diff --cached --name-only | sed '/^$/d' | tr -d '\r')}")
   unstaged_files=("${(@f)$(git diff --name-only | sed '/^$/d' | tr -d '\r')}")
 
+  # Combine and remove duplicates
   for f in "${staged_files[@]}" "${unstaged_files[@]}"; do
     [[ -n "$f" ]] && files+=("$f")
   done
+  files=(${(u)files})
 
   if [[ ${#files[@]} -eq 0 ]]; then
     echo "✅ No files to add"
@@ -95,6 +104,7 @@ git_add() {
     fi
   done
 
+  # Remove duplicates and sort indexes
   indexes=(${(nu)indexes})
 
   for i in "${indexes[@]}"; do
@@ -106,22 +116,22 @@ git_add() {
         continue
       fi
 
-      # If the file is unstaged, allow adding it again
-      if git diff --name-only | grep -qx "$file"; then
-        git add "$file"
+      local abs_path="$root/$file"
+
+      if [[ ! -e "$abs_path" ]]; then
+        echo "⚠️ File not found: $file"
         continue
       fi
 
-      # If the file was unstaged and not yet staged
-      if ! git diff --cached --name-only | grep -qx "$file"; then
-        git add "$file"
-        continue
-      fi
+      # Re-adds modified files (even if they are already staged)
+      (cd "$root" && git add -- "$file")
+      echo "➕ Added: $file"
     else
       echo "⚠️ Invalid number: $i (range: 1-${#files[@]})"
     fi
   done
 }
+
 
 # --------------------------------
 # Git diff
@@ -193,6 +203,14 @@ git_reset() {
 # ===============================================
 
 # --------------------------------------
+# Git root
+# --------------------------------------
+
+get_git_root() {
+  git rev-parse --show-toplevel 2>/dev/null
+}
+
+# --------------------------------------
 # Print
 # --------------------------------------
 
@@ -227,6 +245,12 @@ git_file_map_from_status() {
 
   file_counter=1
   git_file_map=()
+
+  local git_root
+  git_root=$(get_git_root) || {
+    echo "⚠️ Not inside a Git repository."
+    return 1
+  }
 
   local -a staged_items unstaged_items untracked_items
   local allStaged allUnstaged allUntracked label file
@@ -269,19 +293,25 @@ git_file_map_from_status() {
 
   # Staged
   for item in "${staged_items[@]}"; do
-    git_file_map[$file_counter]="$item"
+    local file=$(_extract_filename "$item")
+    local abs_file="$git_root/$file"
+    git_file_map[$file_counter]="$abs_file"
     ((file_counter++))
   done
 
   # Unstaged
   for item in "${unstaged_items[@]}"; do
-    git_file_map[$file_counter]="$item"
+    local file=$(_extract_filename "$item")
+    local abs_file="$git_root/$file"
+    git_file_map[$file_counter]="$abs_file"
     ((file_counter++))
   done
 
   # Untracked
   for item in "${untracked_items[@]}"; do
-    git_file_map[$file_counter]="$item"
+    local file=$(_extract_filename "$item")
+    local abs_file="$git_root/$file"
+    git_file_map[$file_counter]="$abs_file"
     ((file_counter++))
   done
 
