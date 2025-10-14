@@ -54,7 +54,7 @@ git_status() {
 
 git_add() {
   local root files=() indexes=()
-  local staged_files unstaged_files
+  local staged_files unstaged_files untracked_files
 
   # Set the root directory of the git repository
   root=$(git rev-parse --show-toplevel 2>/dev/null) || {
@@ -65,9 +65,10 @@ git_add() {
   # Get all staged and unstaged files
   staged_files=("${(@f)$(git diff --cached --name-only | sed '/^$/d' | tr -d '\r')}")
   unstaged_files=("${(@f)$(git diff --name-only | sed '/^$/d' | tr -d '\r')}")
+  untracked_files=("${(@f)$(git ls-files --others --exclude-standard | tr -d '\r')}")
 
   # Combine and remove duplicates
-  for f in "${staged_files[@]}" "${unstaged_files[@]}"; do
+  for f in "${staged_files[@]}" "${unstaged_files[@]}" "${untracked_files[@]}"; do
     [[ -n "$f" ]] && files+=("$f")
   done
   files=(${(u)files})
@@ -108,21 +109,7 @@ git_add() {
 
   for i in "${indexes[@]}"; do
     if (( i >= 1 && i <= ${#files[@]} )); then
-      local file="${files[$((i))]}"
-
-      if [[ -z "$file" ]]; then
-        echo "⚠️ Skipping empty entry at index $i"
-        continue
-      fi
-
-      local abs_path="$root/$file"
-
-      if [[ ! -e "$abs_path" ]]; then
-        echo "⚠️ File not found: $file"
-        continue
-      fi
-
-      # Re-adds modified files (even if they are already staged)
+      local file="${files[$i]}"
       (cd "$root" && git add -- "$file")
     else
       echo "⚠️ Invalid number: $i (range: 1-${#files[@]})"
