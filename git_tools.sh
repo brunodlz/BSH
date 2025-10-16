@@ -1,16 +1,31 @@
 # ===== GIT ADVANCED =====
 
 # --------------------------------
-# Colors
+# Regular Colors
 # --------------------------------
-
 green=$'\033[32m'
 red=$'\033[31m'
 orange=$'\033[38;5;214m'
 cyan=$'\033[36m'
 gray=$'\033[1;90m'
 white=$'\033[37m'
+
+# --------------------------------
+# Reset
+# --------------------------------
 reset=$'\033[0m'
+
+# --------------------------------
+# Text Styles
+# --------------------------------
+bold=$'\033[1m'
+
+# --------------------------------
+# Git Status Colors
+# --------------------------------
+git_staged_color=$green
+git_unstaged_color=$orange
+git_untracked_color=$cyan
 
 # --------------------------------
 # Shell detection
@@ -42,13 +57,13 @@ fi
 # --------------------------------
 
 git_status() {
+  print_branch_header
   git_file_map_from_status
-
-  file_counter=1
 
   local all_items=("${GIT_STAGED[@]}" "${GIT_UNSTAGED[@]}" "${GIT_UNTRACKED[@]}")
   local max_len=0
   local item type
+
   for item in "${all_items[@]}"; do
       type="${item%%|*}"
       (( ${#type} > max_len )) && max_len=${#type}
@@ -59,9 +74,11 @@ git_status() {
   local max_index_width=${#last_index}
   local padding=$((max_index_width + 2))
 
-  print_git_section "$green"  "Changes to be committed:"        "$max_len" "$padding" "staged"    "${GIT_STAGED[@]}"
-  print_git_section "$orange" "Changes not staged for commit:"  "$max_len" "$padding" "unstaged"  "${GIT_UNSTAGED[@]}"
-  print_git_section "$cyan"   "Untracked files:"                "$max_len" "$padding" "untracked" "${GIT_UNTRACKED[@]}"
+  file_counter=1
+
+  print_git_section "$git_staged_color"    "Changes to be committed:"        "$max_len" "$padding" "staged"    "${GIT_STAGED[@]}"
+  print_git_section "$git_unstaged_color"  "Changes not staged for commit:"  "$max_len" "$padding" "unstaged"  "${GIT_UNSTAGED[@]}"
+  print_git_section "$git_untracked_color" "Untracked files:"                "$max_len" "$padding" "untracked" "${GIT_UNTRACKED[@]}"
 }
 
 # --------------------------------
@@ -72,23 +89,25 @@ git_add() {
   local root files=() indexes=()
   local staged_files unstaged_files untracked_files renamed_files
 
-  # Set the root directory of the git repository
   root=$(git rev-parse --show-toplevel 2>/dev/null) || {
     echo "❌ Not a Git repository"
     return 1
   }
 
-  # Get all staged and unstaged files
-  staged_files=("${(@f)$(git -C "$root" diff --cached --name-only | sed '/^$/d' | tr -d '\r')}")
-  unstaged_files=("${(@f)$(git -C "$root" diff --name-only | sed '/^$/d' | tr -d '\r')}")
-  untracked_files=("${(@f)$(git -C "$root" ls-files --others --exclude-standard | tr -d '\r')}")
-  renamed_files=("${(@f)$(git -C "$root" diff --name-status | awk '/^R/{ print $3 }' | tr -d '\r')}")
+  local status_output
+  status_output=$(git -C "$root" status --porcelain 2>/dev/null)
 
-  # Combine and remove duplicates
-  for f in "${staged_files[@]}" "${unstaged_files[@]}" "${untracked_files[@]}" "${renamed_files[@]}"; do
-    [[ -n "$f" ]] && files+=("$f")
-  done
-  files=(${(u)files})
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    local file="${line:3}"
+    [[ -n "$file" ]] && files+=("$file")
+  done <<< "$status_output"
+
+  if [[ "$__SHELL_TYPE" == "zsh" ]]; then
+    files=(${(u)files})
+  else
+    files=($(printf '%s\n' "${files[@]}" | sort -u))
+  fi
 
   if [[ ${#files[@]} -eq 0 ]]; then
     echo "✅ No files to add"
@@ -122,7 +141,11 @@ git_add() {
   done
 
   # Remove duplicates and sort indexes
-  indexes=(${(nu)indexes})
+  if [[ "$__SHELL_TYPE" == "zsh" ]]; then
+    indexes=(${(nu)indexes})
+  else
+    indexes=($(printf '%s\n' "${indexes[@]}" | sort -nu))
+  fi
 
   for i in "${indexes[@]}"; do
     if (( i >= 1 && i <= ${#files[@]} )); then
@@ -158,8 +181,7 @@ git_diff() {
     return 1
   fi
 
-  local file=$(_extract_filename "${git_file_map[$num]}")
-
+  local file="${git_file_map[$num]}"
   git diff --color=always -- "$file" | less -R
 }
 
@@ -200,7 +222,11 @@ git_reset() {
     fi
   done
 
-  indexes=($(printf '%s\n' "${indexes[@]}" | sort -nu))
+  if [[ "$__SHELL_TYPE" == "zsh" ]]; then
+    indexes=(${(nu)indexes})
+  else
+    indexes=($(printf '%s\n' "${indexes[@]}" | sort -nu))
+  fi
 
   for i in "${indexes[@]}"; do
     if [[ -z "${git_file_map[$i]}" ]]; then
@@ -215,10 +241,9 @@ git_reset() {
     return 1
   fi
 
-  if git reset HEAD -- "${files_to_reset[@]}" >/dev/null; then
+  if git reset HEAD -- "${files_to_reset[@]}" >/dev/null 2>&1; then
     for file in "${files_to_reset[@]}"; do
-      rel_path=$(realpath --relative-to="$PWD" "$file" 2>/dev/null || echo "$file")
-      echo "🧹 Removed from stage: $rel_path"
+      echo "🧹 Removed from stage: $file"
     done
   else
     echo "❌ Failed to reset files."
@@ -233,31 +258,63 @@ git_reset() {
 # ===============================================
 
 # --------------------------------------
-# Git root
+# Git root (cached)
 # --------------------------------------
 
 get_git_root() {
-  git rev-parse --show-toplevel 2>/dev/null
+  if [[ -z "$__GIT_ROOT_CACHE" ]]; then
+    __GIT_ROOT_CACHE=$(git rev-parse --show-toplevel 2>/dev/null)
+  fi
+  echo "$__GIT_ROOT_CACHE"
+}
+
+get_current_branch() {
+  echo "$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD)"
+}
+
+# --------------------------------------
+# Relative path (nativo do shell)
+# --------------------------------------
+
+get_relative_path() {
+  local target="$1"
+  local base="${2:-$PWD}"
+
+  if [[ "$target" == "$base"* ]]; then
+    echo "${target#$base/}"
+  else
+    echo "$target"
+  fi
 }
 
 # --------------------------------------
 # Print
 # --------------------------------------
 
+print_branch_header() {
+  local current_branch
+
+  # Get current branch
+  current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+
+  # Current branch
+  printf "%b⦿ - On branch: %b%b%s%b\n" "$white" "$reset" "$bold" "$current_branch" "$reset"
+  printf "%b║%b\n" "$white" "$reset"
+}
+
 print_git_section() {
   local color="$1"
   local title="$2"
   local max_len="$3"
   local bracket_width="$4"
-  local section_type="$5"  # staged, unstaged, untracked
+  local section_type="$5"
   shift 5
   local items=("$@")
-  local pipe="${color}|${reset}"
+  local pipe="${color}║${reset}"
 
   [[ ${#items[@]} -eq 0 ]] && return
 
-  printf "%b\n" "$white$pipe$reset"
-  printf "%b ➤ %s\n" "$pipe" "$title"
+  printf "${color}⦿ - %s\n${reset}" "$title"
   printf "%b\n" "$pipe"
 
   for item in "${items[@]}"; do
@@ -278,8 +335,8 @@ print_git_section() {
     local space_padding=$((bracket_width - index_width - 2))
 
     printf "%b\t%*s" "$pipe" "$space_padding" ""
-    printf "%b[%b%d%b] " "$white" "$reset" "$file_counter" "$white"
-    printf "%s%-*s%s: %s%b\n" "$color" "$max_len" "$type" "$reset" "$file" "$reset"
+    printf "%b|%b%d%b| " "$white" "$reset" "$file_counter" "$white"
+    printf "%s%-*s%s : %s%b\n" "$color" "$max_len" "$type" "$reset" "$file" "$reset"
 
     ((file_counter++))
   done
@@ -288,15 +345,14 @@ print_git_section() {
 }
 
 # --------------------------------------
-# Git file map from status
+# Git file map from status (OTIMIZADO)
 # --------------------------------------
 
 git_file_map_from_status() {
-  GIT_STAGED=()
-  GIT_UNSTAGED=()
-  GIT_UNTRACKED=()
+  local staged_items=()
+  local unstaged_items=()
+  local untracked_items=()
 
-  file_counter=1
   git_file_map=()
 
   local git_root
@@ -305,28 +361,21 @@ git_file_map_from_status() {
     return 1
   }
 
-  local -a staged_items unstaged_items untracked_items
-  local allStaged allUnstaged allUntracked label file absolute_path relative_path
+  local label file
+  local staged unstaged
 
   while IFS= read -r line; do
-    allStaged="${line:0:1}"    # staged
-    allUnstaged="${line:1:1}"  # unstaged
-    allUntracked="${line:0:2}" # untracked
-    file="${line:3}"           # filename
+    [[ -z "$line" ]] && continue
+
+    staged="${line:0:1}"
+    unstaged="${line:1:1}"
+    file="${line:3}"
 
     [[ -z "$file" ]] && continue
 
-    absolute_path="$git_root/$file"
-
-    if command -v realpath &>/dev/null; then
-      relative_path=$(python3 -c "import os; print(os.path.relpath('$absolute_path', '$PWD'))")
-    else
-      relative_path="$file"
-    fi
-
-    # --- Staged ---
-    if [[ "$allStaged" != " " && "$allStaged" != "?" ]]; then
-      case "$allStaged" in
+    # Staged
+    if [[ "$staged" != " " && "$staged" != "?" ]]; then
+      case "$staged" in
         M) label="modified" ;;
         A) label="new file" ;;
         D) label="deleted" ;;
@@ -334,44 +383,33 @@ git_file_map_from_status() {
         C) label="copied" ;;
         *) label="changed" ;;
       esac
-      staged_items+=("$label|$relative_path")
+      staged_items+=("$label|$file")
     fi
 
-    # --- Unstaged ---
-    if [[ "$allUnstaged" == "M" || "$allUnstaged" == "D" ]]; then
-      case "$allUnstaged" in
+    # Unstaged
+    if [[ "$unstaged" == "M" || "$unstaged" == "D" ]]; then
+      case "$unstaged" in
         M) label="modified" ;;
         D) label="deleted" ;;
       esac
-      unstaged_items+=("$label|$relative_path")
+      unstaged_items+=("$label|$file")
     fi
 
-    # --- Untracked ---
-    if [[ "$allUntracked" == "??" ]]; then
-      untracked_items+=("untracked|$relative_path")
+    # Untracked
+    if [[ "$staged$unstaged" == "??" ]]; then
+      untracked_items+=("untracked|$file")
     fi
   done < <(git -C "$git_root" status --porcelain 2>/dev/null)
 
-  local item file_path
+  file_counter=1
+  local item
 
-  # Staged + Unstaged + Untracked
   for item in "${staged_items[@]}" "${unstaged_items[@]}" "${untracked_items[@]}"; do
-    file_path="${item#*|}"
-    repo_relative_path=$(python3 -c "import os; print(os.path.relpath('$git_root/$file_path', '$git_root'))")
-    git_file_map[$file_counter]="$repo_relative_path"
+    git_file_map[$file_counter]="${item#*|}"
     ((file_counter++))
   done
 
   GIT_STAGED=("${staged_items[@]}")
   GIT_UNSTAGED=("${unstaged_items[@]}")
   GIT_UNTRACKED=("${untracked_items[@]}")
-}
-
-# --------------------------------------
-# Extract filename from colored string
-# --------------------------------------
-
-_extract_filename() {
-  local colored_string="$1"
-  echo "${colored_string#*$reset}"
 }
