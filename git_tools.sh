@@ -272,25 +272,26 @@ get_current_branch() {
 # --------------------------------------
 
 get_relative_path() {
-  local target="$1"
-  local git_root
+  local file="$1"
+  local git_root pwd_rel absolute_path relative_path
+
   git_root=$(get_git_root)
+  absolute_path="$git_root/$file"
+  pwd_rel=$(cd "$PWD" && pwd)
 
-  local abs_target
-  if [[ "$target" = /* ]]; then
-    abs_target="$target"
+  if [[ "$absolute_path" == "$pwd_rel/"* ]]; then
+    relative_path="${absolute_path#$pwd_rel/}"
   else
-    abs_target="$git_root/$target"
+    local common="$pwd_rel"
+    local up=""
+    while [[ "$absolute_path" != "$common/"* && "$common" != "/" ]]; do
+      common=$(dirname "$common")
+      up="../$up"
+    done
+    relative_path="${up}${absolute_path#$common/}"
   fi
 
-  local rel_path
-  rel_path=$(realpath --relative-to="$PWD" "$abs_target" 2>/dev/null)
-
-  if [[ $? -ne 0 ]] || [[ -z "$rel_path" ]]; then
-    rel_path=$(python3 -c "import os.path; print(os.path.relpath('$abs_target', '$PWD'))" 2>/dev/null)
-  fi
-
-  echo "$rel_path"
+  echo "$relative_path"
 }
 
 # --------------------------------------
