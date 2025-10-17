@@ -86,39 +86,23 @@ git_status() {
 # --------------------------------
 
 git_add() {
-  local root files=() indexes=()
-  local staged_files unstaged_files untracked_files renamed_files
-
-  root=$(git rev-parse --show-toplevel 2>/dev/null) || {
-    echo "❌ Not a Git repository"
-    return 1
-  }
-
-  local status_output
-  status_output=$(git -C "$root" status --porcelain 2>/dev/null)
-
-  while IFS= read -r line; do
-    [[ -z "$line" ]] && continue
-    local file="${line:3}"
-    [[ -n "$file" ]] && files+=("$file")
-  done <<< "$status_output"
-
-  if [[ "$__SHELL_TYPE" == "zsh" ]]; then
-    files=(${(u)files})
-  else
-    files=($(printf '%s\n' "${files[@]}" | sort -u))
-  fi
-
-  if [[ ${#files[@]} -eq 0 ]]; then
-    echo "✅ No files to add"
-    return 0
-  fi
-
   if [[ $# -eq 0 ]]; then
     echo "‼️ Use: ga <number(s) or interval(s)>"
     echo "Ex: ga 1 3 5-7"
     return 1
   fi
+
+  if [[ ${#git_file_map[@]} -eq 0 ]]; then
+    git_file_map_from_status
+  fi
+
+  local root
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+    echo "❌ Not a Git repository"
+    return 1
+  }
+
+  local -a indexes=() files_to_add=()
 
   for arg in "$@"; do
     if [[ "$arg" == *-* ]]; then
@@ -148,15 +132,24 @@ git_add() {
   fi
 
   for i in "${indexes[@]}"; do
-    if (( i >= 1 && i <= ${#files[@]} )); then
-      local file="${files[$i]}"
-      (cd "$root" && git add -- "$file" 2>/dev/null)
-    else
-      echo "⚠️ Invalid number: $i (range: 1-${#files[@]})"
+    if [[ -z "${git_file_map[$i]}" ]]; then
+      echo "⚠️ Number out of range: $i (1-${#git_file_map[@]})"
+      continue
     fi
+    files_to_add+=("${git_file_map[$i]}")
   done
 
-  git_status
+  if [[ ${#files_to_add[@]} -eq 0 ]]; then
+    echo "⚠️ No valid files selected."
+    return 1
+  fi
+
+  if (cd "$root" && git add -- "${files_to_add[@]}" 2>/dev/null); then
+    git_status
+  else
+    echo "❌ Failed to add files."
+    return 1
+  fi
 }
 
 # --------------------------------
@@ -165,6 +158,7 @@ git_add() {
 
 git_diff() {
   local num="$1"
+  local git_root=$(get_git_root)
 
   if [[ $# -eq 0 ]]; then
     echo "‼️ Use: gd <number>" >&2
@@ -182,7 +176,7 @@ git_diff() {
   fi
 
   local file="${git_file_map[$num]}"
-  git diff --color=always -- "$file" | less -R
+  cd "$git_root" && git diff --color=always -- "$file" | less -R
 }
 
 # --------------------------------
@@ -201,6 +195,7 @@ git_reset() {
   fi
 
   local -a indexes=() files_to_reset=()
+  local git_root=$(get_git_root)
 
   for arg in "$@"; do
     if [[ "$arg" == *-* ]]; then
@@ -241,7 +236,7 @@ git_reset() {
     return 1
   fi
 
-  if git reset HEAD -- "${files_to_reset[@]}" >/dev/null 2>&1; then
+  if (cd "$git_root" && git reset HEAD -- "${files_to_reset[@]}" >/dev/null 2>&1); then
     for file in "${files_to_reset[@]}"; do
       echo "🧹 Removed from stage: $file"
     done
@@ -273,18 +268,29 @@ get_current_branch() {
 }
 
 # --------------------------------------
-# Relative path (nativo do shell)
+# Relative path
 # --------------------------------------
 
 get_relative_path() {
   local target="$1"
-  local base="${2:-$PWD}"
+  local git_root
+  git_root=$(get_git_root)
 
-  if [[ "$target" == "$base"* ]]; then
-    echo "${target#$base/}"
+  local abs_target
+  if [[ "$target" = /* ]]; then
+    abs_target="$target"
   else
-    echo "$target"
+    abs_target="$git_root/$target"
   fi
+
+  local rel_path
+  rel_path=$(realpath --relative-to="$PWD" "$abs_target" 2>/dev/null)
+
+  if [[ $? -ne 0 ]] || [[ -z "$rel_path" ]]; then
+    rel_path=$(python3 -c "import os.path; print(os.path.relpath('$abs_target', '$PWD'))" 2>/dev/null)
+  fi
+
+  echo "$rel_path"
 }
 
 # --------------------------------------
@@ -331,12 +337,13 @@ print_git_section() {
         untracked) type_color="$cyan" ;;
     esac
 
+    local display_file=$(get_relative_path "$file")
     local index_width=${#file_counter}
     local space_padding=$((bracket_width - index_width - 2))
 
     printf "%b\t%*s" "$pipe" "$space_padding" ""
-    printf "%b|%b%d%b| " "$white" "$reset" "$file_counter" "$white"
-    printf "%s%-*s%s : %s%b\n" "$color" "$max_len" "$type" "$reset" "$file" "$reset"
+    printf "%b[%b%d%b] " "$white" "$reset" "$file_counter" "$white"
+    printf "%s%-*s%s : %s%b\n" "$color" "$max_len" "$type" "$reset" "$display_file" "$reset"
 
     ((file_counter++))
   done
@@ -345,7 +352,7 @@ print_git_section() {
 }
 
 # --------------------------------------
-# Git file map from status (OTIMIZADO)
+# Git file map from status
 # --------------------------------------
 
 git_file_map_from_status() {
