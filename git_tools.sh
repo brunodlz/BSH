@@ -76,9 +76,9 @@ git_status() {
 
   file_counter=1
 
-  print_git_section "$git_staged_color"    "Changes to be committed:"        "$max_len" "$padding" "staged"    "${GIT_STAGED[@]}"
-  print_git_section "$git_unstaged_color"  "Changes not staged for commit:"  "$max_len" "$padding" "unstaged"  "${GIT_UNSTAGED[@]}"
-  print_git_section "$git_untracked_color" "Untracked files:"                "$max_len" "$padding" "untracked" "${GIT_UNTRACKED[@]}"
+  print_git_section "$git_staged_color"    "Changes to be committed:"        "$max_len" "$padding" "${GIT_STAGED[@]}"
+  print_git_section "$git_unstaged_color"  "Changes not staged for commit:"  "$max_len" "$padding" "${GIT_UNSTAGED[@]}"
+  print_git_section "$git_untracked_color" "Untracked files:"                "$max_len" "$padding" "${GIT_UNTRACKED[@]}"
 }
 
 # --------------------------------
@@ -273,25 +273,10 @@ get_current_branch() {
 
 get_relative_path() {
   local file="$1"
-  local git_root pwd_rel absolute_path relative_path
+  local git_root="$(get_git_root)"
 
-  git_root=$(get_git_root)
-  absolute_path="$git_root/$file"
-  pwd_rel=$(cd "$PWD" && pwd)
-
-  if [[ "$absolute_path" == "$pwd_rel/"* ]]; then
-    relative_path="${absolute_path#$pwd_rel/}"
-  else
-    local common="$pwd_rel"
-    local up=""
-    while [[ "$absolute_path" != "$common/"* && "$common" != "/" ]]; do
-      common=$(dirname "$common")
-      up="../$up"
-    done
-    relative_path="${up}${absolute_path#$common/}"
-  fi
-
-  echo "$relative_path"
+  python3 -c "import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))" \
+    "$git_root/$file" "$PWD"
 }
 
 # --------------------------------------
@@ -314,42 +299,51 @@ print_git_section() {
   local title="$2"
   local max_len="$3"
   local bracket_width="$4"
-  local section_type="$5"
-  shift 5
+  shift 4
   local items=("$@")
   local pipe="${color}║${reset}"
 
   [[ ${#items[@]} -eq 0 ]] && return
 
-  printf "${color}⦿ - %s\n${reset}" "$title"
-  printf "%b\n" "$pipe"
+  local buffer=""
+  buffer+="${color}⦿ - ${title}${reset}\n"
+  buffer+="${pipe}\n"
+
+  local item type file display_file index_width space_padding
+
+  local git_root=$(get_git_root)
 
   for item in "${items[@]}"; do
-    local type="${item%%|*}"
-    local file="${item#*|}"
-    local type_color="$reset"
+    type="${item%%|*}"
+    file="${item#*|}"
 
-    case "$type" in
-        modified)  type_color="$green" ;;
-        "new file") type_color="$green" ;;
-        deleted)   type_color="$red" ;;
-        renamed)   type_color="$cyan" ;;
-        copied)    type_color="$cyan" ;;
-        untracked) type_color="$cyan" ;;
-    esac
+    display_file="${file#$git_root/}"
+    if [[ "$PWD" != "$git_root" ]]; then
+      local rel_from_pwd="${PWD#$git_root/}"
+      if [[ -n "$rel_from_pwd" ]]; then
+        local ups=""
+        IFS='/' read -rA dirs <<< "$rel_from_pwd"
+        for _ in "${dirs[@]}"; do
+          ups="../$ups"
+        done
+        display_file="${ups}${display_file}"
+      fi
+    fi
 
-    local display_file=$(get_relative_path "$file")
-    local index_width=${#file_counter}
-    local space_padding=$((bracket_width - index_width - 2))
+    index_width=${#file_counter}
+    space_padding=$((bracket_width - index_width - 2))
 
-    printf "%b\t%*s" "$pipe" "$space_padding" ""
-    printf "%b[%b%d%b] " "$white" "$reset" "$file_counter" "$white"
-    printf "%s%-*s%s : %s%b\n" "$color" "$max_len" "$type" "$reset" "$display_file" "$reset"
+    buffer+=$(printf "%b\t%*s%b[%b%d%b] %s%-*s%s : %s%b\n" \
+      "$pipe" "$space_padding" "" "$white" "$reset" "$file_counter" "$white" \
+      "$color" "$max_len" "$type" "$reset" "$display_file" "$reset")
+    buffer+="\n"
 
     ((file_counter++))
   done
 
-  printf "%b\n" "$pipe"
+  buffer+="${pipe}\n"
+
+  printf "%b" "$buffer"
 }
 
 # --------------------------------------
