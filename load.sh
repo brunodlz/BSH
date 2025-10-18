@@ -3,9 +3,9 @@
 
 BSH_DIR="$HOME/.bsh"
 
-# ----------------------------------------------------------
-# Load all .sh files in ~/.bsh except loader and installer
-# ----------------------------------------------------------
+# -------------------------------
+# 1. Load all .sh files in root
+# -------------------------------
 for file in "$BSH_DIR"/*.sh; do
   filename=$(basename "$file")
   if [ "$filename" != "load.sh" ] && [ "$filename" != "install.sh" ] && [ "$filename" != "update.sh" ] && [ -f "$file" ]; then
@@ -13,8 +13,19 @@ for file in "$BSH_DIR"/*.sh; do
   fi
 done
 
+# -------------------------------
+# 2. Load all modules (e.g git/)
+# -------------------------------
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GIT_DIR="$SCRIPT_DIR/git"
+
+for file in "$GIT_DIR"/*.sh; do
+  source "$file"
+done
+
 # ------------------------
-# BSH Internal Commands
+# 3. BSH Internal Commands
 # ------------------------
 
 # Update BSH to the latest version
