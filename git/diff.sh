@@ -18,5 +18,5 @@ git_diff() {
   fi
 
   local file="${git_file_map[$num]}"
-  cd "$git_root" && git diff --color=always -- "$file" | less -R
+  execute_command git diff --color=always -- "$file" | less -R
 }

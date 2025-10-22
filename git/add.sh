@@ -57,7 +57,7 @@ git_add() {
     return 1
   fi
 
-  if (cd "$root" && git add -- "${files_to_add[@]}" 2>/dev/null); then
+  if execute_command git add -- "${files_to_add[@]}"; then
     git_status
   else
     echo "❌ Failed to add files."

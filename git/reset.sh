@@ -51,7 +51,7 @@ git_reset() {
     return 1
   fi
 
-  if (cd "$git_root" && git reset HEAD -- "${files_to_reset[@]}" >/dev/null 2>&1); then
+  if (execute_command git reset HEAD -- "${files_to_reset[@]}" >/dev/null 2>&1); then
     for file in "${files_to_reset[@]}"; do
       echo "🧹 Removed from stage: $file"
     done
