@@ -1,8 +1,27 @@
 git_checkout() {
   if [[ $# -eq 0 ]]; then
-    echo "‼️ Use: gco <number(s) or interval(s)>"
+    echo "‼️ Use: gco <number(s) or interval(s), '.' or branch>"
     echo "Ex: gco 1 3 5-7"
     return 1
+  fi
+
+  if [[ "$1" == "." ]]; then
+    echo "♻️ Restoring all unstaged files..."
+    git checkout -- .
+    return $?
+  fi
+
+  local all_numeric=true
+  for arg in "$@"; do
+    if [[ ! "$arg" =~ ^[0-9]+(-[0-9]+)?$ ]]; then
+      all_numeric=false
+      break
+    fi
+  done
+
+  if ! $all_numeric; then
+    git checkout "$@"
+    return $?
   fi
 
   if [[ ${#git_file_map[@]} -eq 0 ]]; then
