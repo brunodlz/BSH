@@ -14,6 +14,7 @@ alias gs='git_status'
 alias ga='git_add'
 alias gd='git_diff'
 alias gr='git_reset'
+alias gco='git_checkout'
 
 # ===== SYSTEM =====
 alias ..='cd ..'

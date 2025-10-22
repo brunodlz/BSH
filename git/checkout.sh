@@ -1,7 +1,7 @@
-git_add() {
+git_checkout() {
   if [[ $# -eq 0 ]]; then
-    echo "‼️ Use: ga <number(s) or interval(s)>"
-    echo "Ex: ga 1 3 5-7"
+    echo "‼️ Use: gco <number(s) or interval(s)>"
+    echo "Ex: gco 1 3 5-7"
     return 1
   fi
 
@@ -10,16 +10,16 @@ git_add() {
   fi
 
   local root
-  root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  root=$(get_git_root)
+  if [[ -z "$root" ]]; then
     echo "❌ Not a Git repository"
     return 1
-  }
+  fi
 
-  local -a indexes=() files_to_add=()
+  local -a indexes=() files_to_checkout=()
 
   for arg in "$@"; do
     if [[ "$arg" == *-* ]]; then
-      local start end
       IFS='-' read -r start end <<< "$arg"
       if [[ ! "$start" =~ ^[0-9]+$ ]] || [[ ! "$end" =~ ^[0-9]+$ ]]; then
         echo "⚠️ Invalid interval: $arg"
@@ -37,7 +37,6 @@ git_add() {
     fi
   done
 
-  # Remove duplicates and sort indexes
   if [[ "$__SHELL_TYPE" == "zsh" ]]; then
     indexes=(${(nu)indexes})
   else
@@ -49,18 +48,20 @@ git_add() {
       echo "⚠️ Number out of range: $i (1-${#git_file_map[@]})"
       continue
     fi
-    files_to_add+=("${git_file_map[$i]}")
+    files_to_checkout+=("${git_file_map[$i]}")
   done
 
-  if [[ ${#files_to_add[@]} -eq 0 ]]; then
+  if [[ ${#files_to_checkout[@]} -eq 0 ]]; then
     echo "⚠️ No valid files selected."
     return 1
   fi
 
-  if execute_command git add -- "${files_to_add[@]}"; then
-    git_status
+  if execute_command git checkout -- "${files_to_checkout[@]}"; then
+    for file in "${files_to_checkout[@]}"; do
+      echo "♻️ Checked out: $file"
+    done
   else
-    echo "❌ Failed to add files."
+    echo "❌ Failed to checkout files."
     return 1
   fi
 }
