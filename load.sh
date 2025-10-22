@@ -17,8 +17,7 @@ done
 # 2. Load all modules (e.g git/)
 # -------------------------------
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GIT_DIR="$SCRIPT_DIR/git"
+GIT_DIR="$BSH_DIR/git"
 
 for file in "$GIT_DIR"/*.sh; do
   source "$file"
