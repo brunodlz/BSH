@@ -24,3 +24,28 @@ get_relative_path() {
   python3 -c "import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))" \
     "$git_root/$file" "$PWD"
 }
+
+# ---------------------------------------
+# Execute git commands at repository root
+# ---------------------------------------
+
+execute_command() {
+  local root
+  root=$(get_git_root)
+
+  if [[ -z "$root" ]]; then
+    echo "❌ Not a Git repository"
+    return 1
+  fi
+
+  # save current directory and move to git root
+  pushd "$root" > /dev/null || return 1
+
+  "$@"
+  local result=$?
+
+  # return to original directory
+  popd > /dev/null
+
+  return $result
+}
