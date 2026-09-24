@@ -12,13 +12,14 @@ if [ ! -d "$BSH_DIR/.git" ]; then
 fi
 
 echo "🔁 Updating BSH in $BSH_DIR..."
-cd "$BSH_DIR"
 
-# Pull latest changes from Github
-git pull origin master
+# Atualiza via git -C sem alterar o diretório atual do usuário
+git -C "$BSH_DIR" pull origin master
 
 # Apply install.sh --update if needed
-if [ -f "BSH_DIR/install.sh" ]; then
-    echo "⚙️ Applying configuration changes (if any)..."
-    source "$BSH_DIR/install.sh" --update
+if [ -f "$BSH_DIR/install.sh" ]; then
+    echo "⚙️ Applying configuration changes..."
+    bash "$BSH_DIR/install.sh" --update
 fi
+
+echo "✅ BSH updated successfully!"
