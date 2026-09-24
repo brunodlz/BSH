@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Load all scripts in ~/.bsh dynamically
 
-BSH_DIR="$HOME/.bsh"
+BSH_DIR="${BSH_DIR:-$HOME/.bsh}"
 
 # -------------------------------
 # 1. Load all .sh files in root
@@ -16,31 +16,29 @@ done
 # -------------------------------
 # 2. Load all modules (e.g git/)
 # -------------------------------
-
 GIT_DIR="$BSH_DIR/git"
 
-for file in "$GIT_DIR"/*.sh; do
-  source "$file"
-done
+if [ -d "$GIT_DIR" ]; then
+  for file in "$GIT_DIR"/*.sh; do
+    [ -f "$file" ] && source "$file"
+  done
+fi
 
 # ------------------------
 # 3. BSH Internal Commands
 # ------------------------
 
-# Update BSH to the latest version
 bsh_update() {
   bash "$BSH_DIR/update.sh"
 }
 
-# Reload BSH without restarting the shell
 bsh_reload() {
   echo "🔁 Reloading BSH..."
   source "$BSH_DIR/load.sh"
   echo "✅ BSH reloaded!"
 }
 
-# Show information about the current BSH installation
 bsh_info() {
   echo "📦 BSH Directory: $BSH_DIR"
-  echo "🔢 Git version: $(cd "$BSH_DIR" && git rev-parse --short HEAD 2>/dev/null || echo 'N/A')"
+  echo "🔢 Git version: $(git -C "$BSH_DIR" rev-parse --short HEAD 2>/dev/null || echo 'N/A')"
 }

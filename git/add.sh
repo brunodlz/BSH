@@ -5,51 +5,53 @@ git_add() {
     return 1
   fi
 
-  if [[ ${#git_file_map[@]} -eq 0 ]]; then
-    git_file_map_from_status
-  fi
-
+  # Garante que estamos dentro de um repositório git
   local root
   root=$(git rev-parse --show-toplevel 2>/dev/null) || {
     echo "❌ Not a Git repository"
     return 1
   }
 
-  local -a indexes=() files_to_add=()
+  if [[ ${#git_file_map[@]} -eq 0 ]]; then
+    git_file_map_from_status
+  fi
 
+  local -a raw_indexes=() files_to_add=()
+
+  # 1. Parsing dos argumentos (números e intervalos)
   for arg in "$@"; do
     if [[ "$arg" == *-* ]]; then
       local start end
       IFS='-' read -r start end <<< "$arg"
-      if [[ ! "$start" =~ ^[0-9]+$ ]] || [[ ! "$end" =~ ^[0-9]+$ ]]; then
+      if [[ "$start" =~ ^[0-9]+$ ]] && [[ "$end" =~ ^[0-9]+$ ]]; then
+        for ((i=start; i<=end; i++)); do
+          raw_indexes+=("$i")
+        done
+      else
         echo "⚠️ Invalid interval: $arg"
-        continue
       fi
-      for ((i=start; i<=end; i++)); do
-        indexes+=($i)
-      done
+    elif [[ "$arg" =~ ^[0-9]+$ ]]; then
+      raw_indexes+=("$arg")
     else
-      if [[ ! "$arg" =~ ^[0-9]+$ ]]; then
-        echo "⚠️ Invalid number: $arg"
-        continue
-      fi
-      indexes+=($arg)
+      echo "⚠️ Invalid number: $arg"
     fi
   done
 
-  # Remove duplicates and sort indexes
-  if [[ "$__SHELL_TYPE" == "zsh" ]]; then
-    indexes=(${(nu)indexes})
-  else
-    indexes=($(printf '%s\n' "${indexes[@]}" | sort -nu))
+  if [[ ${#raw_indexes[@]} -eq 0 ]]; then
+    echo "⚠️ No valid indexes provided."
+    return 1
   fi
 
+  # 2. Remoção de duplicatas e ordenação (compatível com Bash e Zsh)
+  local -a indexes=($(printf '%s\n' "${raw_indexes[@]}" | sort -nu))
+
+  # 3. Mapeamento dos arquivos selecionados
   for i in "${indexes[@]}"; do
-    if [[ -z "${git_file_map[$i]}" ]]; then
+    if [[ -n "${git_file_map[$i]}" ]]; then
+      files_to_add+=("${git_file_map[$i]}")
+    else
       echo "⚠️ Number out of range: $i (1-${#git_file_map[@]})"
-      continue
     fi
-    files_to_add+=("${git_file_map[$i]}")
   done
 
   if [[ ${#files_to_add[@]} -eq 0 ]]; then
@@ -57,9 +59,16 @@ git_add() {
     return 1
   fi
 
-  if execute_command git add -- "${files_to_add[@]}"; then
+  # 4. Execução e preservação do PWD do usuário
+  local current_dir="$PWD"
+
+  # Faz o add a partir da raiz do projeto para garantir caminhos relativos corretos
+  if ( cd "$root" && execute_command git add -- "${files_to_add[@]}" ); then
+    # Restaura o diretório antes de rodar o git_status
+    cd "$current_dir" || return 1
     git_status
   else
+    cd "$current_dir" || return 1
     echo "❌ Failed to add files."
     return 1
   fi

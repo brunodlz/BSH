@@ -1,28 +1,13 @@
 # --------------------------------------
-# Git root (cached)
+# Git root
 # --------------------------------------
 
 get_git_root() {
-  if [[ -z "$__GIT_ROOT_CACHE" ]]; then
-    __GIT_ROOT_CACHE=$(git rev-parse --show-toplevel 2>/dev/null)
-  fi
-  echo "$__GIT_ROOT_CACHE"
+  git rev-parse --show-toplevel 2>/dev/null
 }
 
 get_current_branch() {
-  echo "$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD)"
-}
-
-# --------------------------------------
-# Relative path
-# --------------------------------------
-
-get_relative_path() {
-  local file="$1"
-  local git_root="$(get_git_root)"
-
-  python3 -c "import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))" \
-    "$git_root/$file" "$PWD"
+  git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null
 }
 
 # ---------------------------------------
@@ -38,14 +23,11 @@ execute_command() {
     return 1
   fi
 
-  # save current directory and move to git root
-  pushd "$root" > /dev/null || return 1
+  # Se o primeiro argumento já for "git", remove-o para não duplicar (ex: "git add" vira "add")
+  if [[ "$1" == "git" ]]; then
+    shift
+  fi
 
-  "$@"
-  local result=$?
-
-  # return to original directory
-  popd > /dev/null
-
-  return $result
+  # Executa o comando git no diretório raiz do repositório sem mudar o PWD do terminal
+  command git -C "$root" "$@"
 }

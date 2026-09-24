@@ -35,32 +35,26 @@ git_checkout() {
     return 1
   fi
 
-  local -a indexes=() files_to_checkout=()
+  local -a raw_indexes=() files_to_checkout=()
 
   for arg in "$@"; do
     if [[ "$arg" == *-* ]]; then
       IFS='-' read -r start end <<< "$arg"
-      if [[ ! "$start" =~ ^[0-9]+$ ]] || [[ ! "$end" =~ ^[0-9]+$ ]]; then
+      if [[ "$start" =~ ^[0-9]+$ && "$end" =~ ^[0-9]+$ ]]; then
+        for ((i=start; i<=end; i++)); do
+          raw_indexes+=("$i")
+        done
+      else
         echo "⚠️ Invalid interval: $arg"
-        continue
       fi
-      for ((i=start; i<=end; i++)); do
-        indexes+=($i)
-      done
+    elif [[ "$arg" =~ ^[0-9]+$ ]]; then
+      raw_indexes+=("$arg")
     else
-      if [[ ! "$arg" =~ ^[0-9]+$ ]]; then
-        echo "⚠️ Invalid number: $arg"
-        continue
-      fi
-      indexes+=($arg)
+      echo "⚠️ Invalid number: $arg"
     fi
   done
 
-  if [[ "$__SHELL_TYPE" == "zsh" ]]; then
-    indexes=(${(nu)indexes})
-  else
-    indexes=($(printf '%s\n' "${indexes[@]}" | sort -nu))
-  fi
+  local -a indexes=($(printf '%s\n' "${raw_indexes[@]}" | sort -nu))
 
   for i in "${indexes[@]}"; do
     if [[ -z "${git_file_map[$i]}" ]]; then

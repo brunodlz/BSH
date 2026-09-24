@@ -9,34 +9,27 @@ git_reset() {
     git_file_map_from_status
   fi
 
-  local -a indexes=() files_to_reset=()
-  local git_root=$(get_git_root)
+  local -a raw_indexes=() files_to_reset=()
 
   for arg in "$@"; do
     if [[ "$arg" == *-* ]]; then
       local start end
       IFS='-' read -r start end <<< "$arg"
-      if [[ ! "$start" =~ ^[0-9]+$ || ! "$end" =~ ^[0-9]+$ || $start -gt $end ]]; then
+      if [[ "$start" =~ ^[0-9]+$ && "$end" =~ ^[0-9]+$ && $start -le $end ]]; then
+        for ((i = start; i <= end; i++)); do
+          raw_indexes+=("$i")
+        done
+      else
         echo "⚠️ Invalid interval: $arg"
-        continue
       fi
-      for ((i = start; i <= end; i++)); do
-        indexes+=("$i")
-      done
+    elif [[ "$arg" =~ ^[0-9]+$ ]]; then
+      raw_indexes+=("$arg")
     else
-      if [[ ! "$arg" =~ ^[0-9]+$ ]]; then
-        echo "⚠️ Invalid number: $arg"
-        continue
-      fi
-      indexes+=("$arg")
+      echo "⚠️ Invalid number: $arg"
     fi
   done
 
-  if [[ "$__SHELL_TYPE" == "zsh" ]]; then
-    indexes=(${(nu)indexes})
-  else
-    indexes=($(printf '%s\n' "${indexes[@]}" | sort -nu))
-  fi
+  local -a indexes=($(printf '%s\n' "${raw_indexes[@]}" | sort -nu))
 
   for i in "${indexes[@]}"; do
     if [[ -z "${git_file_map[$i]}" ]]; then
@@ -51,7 +44,7 @@ git_reset() {
     return 1
   fi
 
-  if (execute_command git reset HEAD -- "${files_to_reset[@]}" >/dev/null 2>&1); then
+  if execute_command git reset HEAD -- "${files_to_reset[@]}" >/dev/null 2>&1; then
     for file in "${files_to_reset[@]}"; do
       echo "🧹 Removed from stage: $file"
     done

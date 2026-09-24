@@ -1,7 +1,6 @@
 print_branch_header() {
   local current_branch
-
-  current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+  current_branch=$(get_current_branch)
 
   printf "%b⦿ - On branch: %b%b%s%b\n" "$white" "$reset" "$bold" "$current_branch" "$reset"
   printf "%b║%b\n" "$white" "$reset"
@@ -23,20 +22,19 @@ print_git_section() {
   buffer+="${pipe}\n"
 
   local item type file display_file index_width space_padding
-
   local git_root=$(get_git_root)
 
   for item in "${items[@]}"; do
     type="${item%%|*}"
     file="${item#*|}"
 
-    display_file="${file#$git_root/}"
+    display_file="$file"
     if [[ "$PWD" != "$git_root" ]]; then
       local rel_from_pwd="${PWD#$git_root/}"
-      if [[ -n "$rel_from_pwd" ]]; then
+      if [[ -n "$rel_from_pwd" && "$rel_from_pwd" != "$PWD" ]]; then
         local ups=""
-        IFS='/' read -rA dirs <<< "$rel_from_pwd"
-        for _ in "${dirs[@]}"; do
+        # Compatível com Bash e Zsh sem usar read -rA
+        for _ in $(echo "$rel_from_pwd" | tr '/' ' '); do
           ups="../$ups"
         done
         display_file="${ups}${display_file}"
